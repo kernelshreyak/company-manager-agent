@@ -1,0 +1,16 @@
+[project]
+name = "company-manager-agent"
+version = "0.1.0"
+description = "OpenClaw-backed company manager proof of concept"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "SQLAlchemy>=2.0,<3.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["company_manager*"]
