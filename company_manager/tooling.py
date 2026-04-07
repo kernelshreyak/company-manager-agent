@@ -3,10 +3,23 @@ from __future__ import annotations
 from collections import Counter
 from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, joinedload
 
-from company_manager.models import Department, Employee, Meeting, MeetingAttendee, Order, OrderItem, OrderStatus, Priority, Product, Task, TaskStatus
+from company_manager.models import (
+    Department,
+    Employee,
+    Meeting,
+    MeetingAttendee,
+    MeetingStatus,
+    Order,
+    OrderItem,
+    OrderStatus,
+    Priority,
+    Product,
+    Task,
+    TaskStatus,
+)
 
 
 def company_snapshot(session: Session) -> dict:
@@ -98,7 +111,12 @@ def list_orders(session: Session, status: str | None = None, limit: int = 20) ->
     ]
 
 
-def list_meetings(session: Session, upcoming_only: bool = True, limit: int = 10) -> list[dict]:
+def list_meetings(
+    session: Session,
+    upcoming_only: bool = True,
+    include_cancelled: bool = False,
+    limit: int = 10,
+) -> list[dict]:
     query = (
         select(Meeting)
         .options(joinedload(Meeting.attendees).joinedload(MeetingAttendee.employee))
@@ -106,6 +124,8 @@ def list_meetings(session: Session, upcoming_only: bool = True, limit: int = 10)
     )
     if upcoming_only:
         query = query.where(Meeting.start_at >= datetime.utcnow())
+    if not include_cancelled:
+        query = query.where(Meeting.status == MeetingStatus.scheduled)
     query = query.limit(limit)
     rows = session.scalars(query).unique().all()
     return [
@@ -116,6 +136,7 @@ def list_meetings(session: Session, upcoming_only: bool = True, limit: int = 10)
             "duration_minutes": row.duration_minutes,
             "location": row.location,
             "agenda": row.agenda,
+            "status": row.status.value,
             "attendees": [attendee.employee.full_name for attendee in row.attendees],
         }
         for row in rows
@@ -200,6 +221,7 @@ def schedule_meeting(
         duration_minutes=duration_minutes,
         location=location,
         agenda=agenda,
+        status=MeetingStatus.scheduled,
         created_by=created_by,
     )
     session.add(meeting)
@@ -216,5 +238,71 @@ def schedule_meeting(
         "title": meeting.title,
         "start_at": meeting.start_at.isoformat(),
         "location": meeting.location,
+        "status": meeting.status.value,
         "attendees": attendees,
     }
+
+
+def reschedule_meeting(
+    session: Session,
+    meeting_id: int,
+    start_at: str,
+    duration_minutes: int | None = None,
+    location: str | None = None,
+    agenda: str | None = None,
+    title: str | None = None,
+) -> dict:
+    meeting = session.get(Meeting, meeting_id)
+    if not meeting:
+        raise ValueError(f"Meeting {meeting_id} not found")
+    meeting.start_at = datetime.fromisoformat(start_at)
+    meeting.status = MeetingStatus.scheduled
+    if duration_minutes is not None:
+        meeting.duration_minutes = duration_minutes
+    if location is not None:
+        meeting.location = location
+    if agenda is not None:
+        meeting.agenda = agenda
+    if title is not None:
+        meeting.title = title
+    session.commit()
+    session.refresh(meeting)
+    return {
+        "id": meeting.id,
+        "title": meeting.title,
+        "start_at": meeting.start_at.isoformat(),
+        "duration_minutes": meeting.duration_minutes,
+        "location": meeting.location,
+        "status": meeting.status.value,
+    }
+
+
+def cancel_meeting(session: Session, meeting_id: int) -> dict:
+    meeting = session.get(Meeting, meeting_id)
+    if not meeting:
+        raise ValueError(f"Meeting {meeting_id} not found")
+    meeting.status = MeetingStatus.cancelled
+    session.commit()
+    session.refresh(meeting)
+    return {
+        "id": meeting.id,
+        "title": meeting.title,
+        "status": meeting.status.value,
+        "start_at": meeting.start_at.isoformat(),
+    }
+
+
+def delete_meeting(session: Session, meeting_id: int) -> dict:
+    meeting = session.get(Meeting, meeting_id)
+    if not meeting:
+        raise ValueError(f"Meeting {meeting_id} not found")
+    payload = {
+        "id": meeting.id,
+        "title": meeting.title,
+        "start_at": meeting.start_at.isoformat(),
+        "status": meeting.status.value,
+    }
+    session.execute(delete(MeetingAttendee).where(MeetingAttendee.meeting_id == meeting_id))
+    session.delete(meeting)
+    session.commit()
+    return payload

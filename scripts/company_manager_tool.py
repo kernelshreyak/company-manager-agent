@@ -10,13 +10,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from company_manager.db import SessionLocal
 from company_manager.tooling import (
+    cancel_meeting,
     company_snapshot,
     create_task,
+    delete_meeting,
     list_employees,
     list_meetings,
     list_orders,
     list_products,
     list_tasks,
+    reschedule_meeting,
     schedule_meeting,
     update_task_status,
 )
@@ -45,6 +48,7 @@ def parser() -> argparse.ArgumentParser:
 
     meeting_parser = subparsers.add_parser("meetings")
     meeting_parser.add_argument("--all", action="store_true")
+    meeting_parser.add_argument("--include-cancelled", action="store_true")
     meeting_parser.add_argument("--limit", type=int, default=10)
 
     task_parser = subparsers.add_parser("tasks")
@@ -71,6 +75,20 @@ def parser() -> argparse.ArgumentParser:
     schedule_parser.add_argument("--attendee-email", action="append", default=[])
     schedule_parser.add_argument("--created-by", default="agent")
 
+    reschedule_parser = subparsers.add_parser("reschedule-meeting")
+    reschedule_parser.add_argument("--meeting-id", type=int, required=True)
+    reschedule_parser.add_argument("--start-at", required=True, help="ISO timestamp, example 2026-04-13T15:00:00")
+    reschedule_parser.add_argument("--duration-minutes", type=int)
+    reschedule_parser.add_argument("--location")
+    reschedule_parser.add_argument("--agenda")
+    reschedule_parser.add_argument("--title")
+
+    cancel_parser = subparsers.add_parser("cancel-meeting")
+    cancel_parser.add_argument("--meeting-id", type=int, required=True)
+
+    delete_parser = subparsers.add_parser("delete-meeting")
+    delete_parser.add_argument("--meeting-id", type=int, required=True)
+
     return root
 
 
@@ -86,7 +104,14 @@ def main() -> None:
         elif args.command == "orders":
             emit(list_orders(session, status=args.status, limit=args.limit))
         elif args.command == "meetings":
-            emit(list_meetings(session, upcoming_only=not args.all, limit=args.limit))
+            emit(
+                list_meetings(
+                    session,
+                    upcoming_only=not args.all,
+                    include_cancelled=args.include_cancelled,
+                    limit=args.limit,
+                )
+            )
         elif args.command == "tasks":
             emit(list_tasks(session, status=args.status, limit=args.limit))
         elif args.command == "create-task":
@@ -115,6 +140,22 @@ def main() -> None:
                     created_by=args.created_by,
                 )
             )
+        elif args.command == "reschedule-meeting":
+            emit(
+                reschedule_meeting(
+                    session,
+                    meeting_id=args.meeting_id,
+                    start_at=args.start_at,
+                    duration_minutes=args.duration_minutes,
+                    location=args.location,
+                    agenda=args.agenda,
+                    title=args.title,
+                )
+            )
+        elif args.command == "cancel-meeting":
+            emit(cancel_meeting(session, meeting_id=args.meeting_id))
+        elif args.command == "delete-meeting":
+            emit(delete_meeting(session, meeting_id=args.meeting_id))
 
 
 if __name__ == "__main__":

@@ -32,6 +32,11 @@ class Priority(str, Enum):
     critical = "critical"
 
 
+class MeetingStatus(str, Enum):
+    scheduled = "scheduled"
+    cancelled = "cancelled"
+
+
 class Company(Base):
     __tablename__ = "companies"
 
@@ -152,6 +157,7 @@ class Meeting(Base):
     duration_minutes: Mapped[int]
     location: Mapped[str] = mapped_column(String(160))
     agenda: Mapped[str] = mapped_column(Text)
+    status: Mapped[MeetingStatus] = mapped_column(SqlEnum(MeetingStatus), default=MeetingStatus.scheduled)
     created_by: Mapped[str] = mapped_column(String(200), default="system")
 
     attendees: Mapped[list["MeetingAttendee"]] = relationship(back_populates="meeting")
